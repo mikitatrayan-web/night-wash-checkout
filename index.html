@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Night Wash Checkout</title>
+</head>
+<body>
+  <h1>Night Wash Payment</h1>
+  <button id="pay">Continue to payment</button>
+
+  <script>
+    document.getElementById("pay").onclick = async () => {
+      const r = await fetch("/.netlify/functions/create-checkout", {
+        method: "POST"
+      });
+      const data = await r.json();
+      window.location.href = data.url;
+    };
+  </script>
+</body>
+</html>
