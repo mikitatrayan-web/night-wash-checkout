@@ -6,7 +6,7 @@ exports.handler = async function(event) {
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     line_items: [{
-      price: "price_XXXXX", // сюда вставим твой Stripe price id
+      price: "pprod_U2TVadjFTRCnL3", // сюда вставим твой Stripe price id
       quantity: 1
     }],
     success_url: "https://night-wash.com/success",
