@@ -9,21 +9,22 @@ const PRODUCT_BY_PLAN = {
 
 const priceCache = new Map();
 
-async function getActivePriceId(stripe, productId) {
+async function getActiveRecurringPriceId(stripe, productId) {
   if (priceCache.has(productId)) return priceCache.get(productId);
 
   const prices = await stripe.prices.list({ product: productId, active: true, limit: 10 });
   const recurring = prices.data.find((p) => p.type === "recurring" && p.recurring);
+
   if (!recurring) throw new Error(`No active recurring price for product ${productId}`);
 
   priceCache.set(productId, recurring.id);
   return recurring.id;
 }
 
-// Stripe metadata: максимум 50 ключей, значения строками и до ~500 символов.
-// Делаем "безопасное" приведение к строкам и обрезаем.
+// Stripe metadata values must be strings, max ~500 chars.
+// Keep keys <= 40 chars. Up to 50 keys.
 function md(val, max = 500) {
-  const s = (val ?? "").toString();
+  const s = (val ?? "").toString().trim();
   return s.length > max ? s.slice(0, max) : s;
 }
 
@@ -36,17 +37,23 @@ exports.handler = async (event) => {
     const productId = PRODUCT_BY_PLAN[plan];
     if (!productId) return { statusCode: 400, body: JSON.stringify({ error: "Unknown plan" }) };
 
-    const priceId = await getActivePriceId(stripe, productId);
+    const priceId = await getActiveRecurringPriceId(stripe, productId);
 
     const metadata = {
       plan,
-      user_id: md(body.user_id),
-      order_id: md(body.order_id),
+      user_id: md(body.user_id, 200),
+      order_id: md(body.order_id, 200),
 
-      car_make: md(body.car_make, 200),
-      address: md(body.address, 300),
-      parking_spot: md(body.parking_spot, 100),
-      wash_datetime: md(body.wash_datetime, 50),
+      plate: md(body.plate, 50),
+      brand: md(body.brand, 80),
+      model: md(body.model, 80),
+      color: md(body.color, 50),
+      floorLevel: md(body.floorLevel, 50),
+      parkingSpot: md(body.parkingSpot, 50),
+      boxDeliveryAddress: md(body.boxDeliveryAddress, 300),
+
+      privacyPolicyAccepted: "true",
+      privacyPolicyUrl: "https://night-wash.com/terms2",
     };
 
     const session = await stripe.checkout.sessions.create({
@@ -55,14 +62,11 @@ exports.handler = async (event) => {
       success_url: "https://night-wash.com/success?session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://night-wash.com/cancel",
 
-      // metadata на Session
+      // Session metadata
       metadata,
 
-      // metadata на Subscription (важно для дальнейших платежей/учёта)
+      // Subscription metadata (important for ongoing billing)
       subscription_data: { metadata },
-
-      // если хочешь, можно добавить customer_email, если будешь собирать email на странице
-      // customer_email: md(body.email, 200),
     });
 
     return { statusCode: 200, body: JSON.stringify({ url: session.url }) };
