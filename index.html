@@ -6,7 +6,7 @@
   <title>Night Wash — Checkout</title>
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; padding: 24px; }
-    .card { max-width: 620px; margin: 0 auto; padding: 22px; border-radius: 16px; border: 1px solid #e7e7e7; }
+    .card { max-width: 720px; margin: 0 auto; padding: 22px; border-radius: 16px; border: 1px solid #e7e7e7; }
     label { display:block; margin: 14px 0 6px; font-weight: 600; }
     input, select { width: 100%; padding: 12px 12px; border-radius: 12px; border: 1px solid #d8d8d8; font-size: 16px; box-sizing: border-box; }
     button { margin-top: 18px; width: 100%; padding: 14px 16px; border-radius: 14px; border: 0; font-size: 16px; cursor:pointer; }
@@ -16,12 +16,15 @@
     .consent input { width:auto; margin-top: 3px; }
     a { color: inherit; }
     .error { color: #b00020; opacity: 1; }
+    .muted { opacity: .8; font-size: 13px; margin-top: 8px; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1 style="margin:0 0 6px;">Night Wash Payment</h1>
-    <div class="hint">Fill in the details below. They will be sent to Stripe as metadata and used to fulfill your service.</div>
+    <div class="hint">
+      Please fill in the details below. They will be sent to Stripe as metadata and used to fulfill your service.
+    </div>
 
     <label>Plan</label>
     <select id="plan">
@@ -33,34 +36,56 @@
 
     <div class="row">
       <div>
+        <label>First name</label>
+        <input id="firstName" placeholder="e.g., Pepe" autocomplete="given-name" />
+      </div>
+      <div>
+        <label>Last name</label>
+        <input id="lastName" placeholder="e.g., Pérez" autocomplete="family-name" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Email</label>
+        <input id="email" type="email" placeholder="pepito@gmail.com" autocomplete="email" />
+      </div>
+      <div>
+        <label>Phone number</label>
+        <input id="phoneNumber" placeholder="+34605999999" autocomplete="tel" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
         <label>Plate number</label>
         <input id="plate" placeholder="e.g., 1234 ABC" autocomplete="off" />
       </div>
       <div>
         <label>Color</label>
-        <input id="color" placeholder="e.g., Black" autocomplete="off" />
+        <input id="color" placeholder="e.g., Red" autocomplete="off" />
       </div>
     </div>
 
     <div class="row">
       <div>
         <label>Brand</label>
-        <input id="brand" placeholder="e.g., BMW" autocomplete="off" />
+        <input id="brand" placeholder="e.g., Toyota" autocomplete="off" />
       </div>
       <div>
         <label>Model</label>
-        <input id="model" placeholder="e.g., X5" autocomplete="off" />
+        <input id="model" placeholder="e.g., Corolla" autocomplete="off" />
       </div>
     </div>
 
     <div class="row">
       <div>
         <label>Floor level</label>
-        <input id="floorLevel" placeholder="e.g., -1 / 2nd floor" autocomplete="off" />
+        <input id="floorLevel" placeholder="e.g., 1 / -1 / 2nd floor" autocomplete="off" />
       </div>
       <div>
         <label>Parking spot</label>
-        <input id="parkingSpot" placeholder="e.g., P-12" autocomplete="off" />
+        <input id="parkingSpot" placeholder="e.g., 42 / P-12" autocomplete="off" />
       </div>
     </div>
 
@@ -70,12 +95,18 @@
     <div class="consent">
       <input type="checkbox" id="consent" />
       <div class="hint" style="margin:0;">
-        I agree to the <a href="https://night-wash.com/terms2" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+        I agree to the
+        <a href="https://night-wash.com/terms2" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
       </div>
     </div>
 
     <button id="pay">Continue to payment</button>
     <div class="hint" id="msg"></div>
+
+    <div class="muted">
+      Tip: you can preselect a plan via URL, e.g. <code>?plan=elite</code>.
+      Optional: <code>&amp;user_id=123&amp;order_id=ORDER-987</code>.
+    </div>
   </div>
 
   <script>
@@ -93,7 +124,7 @@
       return (document.getElementById(id).value || "").trim();
     }
 
-    document.getElementById("pay").onclick = async () => {
+    document.getElementById("pay").addEventListener("click", async () => {
       const msg = document.getElementById("msg");
       msg.classList.remove("error");
       msg.textContent = "";
@@ -109,6 +140,11 @@
         user_id,
         order_id,
 
+        firstName: val("firstName"),
+        lastName: val("lastName"),
+        phoneNumber: val("phoneNumber"),
+        email: val("email"),
+
         plate: val("plate"),
         brand: val("brand"),
         model: val("model"),
@@ -118,29 +154,46 @@
         boxDeliveryAddress: val("boxDeliveryAddress"),
       };
 
-      // Minimal required fields (edit if you want stricter)
-      if (!payload.plate || !payload.boxDeliveryAddress) {
+      // Minimal required fields (adjust as you like)
+      const required = [
+        ["firstName", "First name"],
+        ["lastName", "Last name"],
+        ["phoneNumber", "Phone number"],
+        ["email", "Email"],
+        ["plate", "Plate number"],
+        ["boxDeliveryAddress", "Box delivery address"],
+      ];
+
+      const missing = required.filter(([k]) => !payload[k]).map(([, label]) => label);
+
+      if (missing.length) {
         msg.classList.add("error");
-        msg.textContent = "Please fill in at least: Plate number and Box delivery address.";
+        msg.textContent = "Please fill in: " + missing.join(", ") + ".";
         return;
       }
 
       msg.textContent = "Creating payment…";
 
-      const r = await fetch("/.netlify/functions/create-checkout", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(payload)
-      });
+      try {
+        const r = await fetch("/.netlify/functions/create-checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-      const data = await r.json();
-      if (data.url) {
-        location.href = data.url;
-      } else {
+        const data = await r.json();
+        if (data.url) {
+          location.href = data.url;
+        } else {
+          msg.classList.add("error");
+          msg.textContent = (data && data.error) ? ("Error: " + data.error) : "Failed to create payment.";
+        }
+      } catch (e) {
         msg.classList.add("error");
-        msg.textContent = (data && data.error) ? ("Error: " + data.error) : "Failed to create payment.";
+        msg.textContent = "Network error. Please try again.";
+        console.error(e);
       }
-    };
+    });
   </script>
 </body>
 </html>
