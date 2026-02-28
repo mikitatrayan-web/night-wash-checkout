@@ -65,7 +65,8 @@ async function callMakeWebhook(payload) {
     data = null;
   }
 
-  const klickContactId = data?.klickContactId || data?.contact_id || data?.id || null;
+const klickContactId =
+  data?.klickContactId || data?.contactId || data?.contact_id || data?.id || null;
   if (!klickContactId) {
     throw new Error(`Make responded OK but no klickContactId found. Response: ${text}`.slice(0, 900));
   }
