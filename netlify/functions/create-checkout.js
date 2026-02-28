@@ -7,7 +7,6 @@ const PRODUCT_BY_PLAN = {
   signature: "prod_U3hh9pgXE2XgLQ",
 };
 
-// mapping plan → subtype
 const SUBTYPE_BY_PLAN = {
   essential: "ONE_WASH",
   comfort: "TWO_WASH",
@@ -20,18 +19,9 @@ const priceCache = new Map();
 async function getActiveRecurringPriceId(stripe, productId) {
   if (priceCache.has(productId)) return priceCache.get(productId);
 
-  const prices = await stripe.prices.list({
-    product: productId,
-    active: true,
-    limit: 10,
-  });
-
-  const recurring = prices.data.find(
-    (p) => p.type === "recurring" && p.recurring
-  );
-
-  if (!recurring)
-    throw new Error(`No active recurring price for product ${productId}`);
+  const prices = await stripe.prices.list({ product: productId, active: true, limit: 10 });
+  const recurring = prices.data.find((p) => p.type === "recurring" && p.recurring);
+  if (!recurring) throw new Error(`No active recurring price for product ${productId}`);
 
   priceCache.set(productId, recurring.id);
   return recurring.id;
@@ -46,6 +36,9 @@ async function callMakeWebhook(payload) {
   const url = process.env.MAKE_WEBHOOK_URL;
   const apiKey = process.env.MAKE_API_KEY;
 
+  if (!url) throw new Error("MAKE_WEBHOOK_URL is not set");
+  if (!apiKey) throw new Error("MAKE_API_KEY is not set");
+
   const resp = await fetch(url, {
     method: "POST",
     headers: {
@@ -55,13 +48,29 @@ async function callMakeWebhook(payload) {
     body: JSON.stringify(payload),
   });
 
+  const text = await resp.text().catch(() => "");
+
   if (!resp.ok) {
-    throw new Error("Make webhook failed");
+    // покажем максимум полезной информации
+    throw new Error(
+      `Make webhook failed: ${resp.status} ${resp.statusText} ${text}`.slice(0, 900)
+    );
   }
 
-  // ожидаем, что Make вернёт JSON с klickContactId
-  const data = await resp.json();
-  return data.klickContactId;
+  // попробуем распарсить JSON
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (_) {
+    data = null;
+  }
+
+  const klickContactId = data?.klickContactId || data?.contact_id || data?.id || null;
+  if (!klickContactId) {
+    throw new Error(`Make responded OK but no klickContactId found. Response: ${text}`.slice(0, 900));
+  }
+
+  return String(klickContactId);
 }
 
 exports.handler = async (event) => {
@@ -73,61 +82,46 @@ exports.handler = async (event) => {
     const productId = PRODUCT_BY_PLAN[plan];
     const subType = SUBTYPE_BY_PLAN[plan];
 
-    if (!productId)
+    if (!productId) {
       return { statusCode: 400, body: JSON.stringify({ error: "Unknown plan" }) };
+    }
 
-    // 1️⃣ Send to Make first
+    // 1) Make first
     const klickContactId = await callMakeWebhook({
-      firstName: body.firstName,
-      lastName: body.lastName,
-      phoneNumber: body.phoneNumber,
-      email: body.email,
-      plate: body.plate,
-      brand: body.brand,
-      model: body.model,
-      color: body.color,
-      floorLevel: body.floorLevel,
-      parkingSpot: body.parkingSpot,
-      boxDeliveryAddress: body.boxDeliveryAddress,
+      firstName: md(body.firstName, 80),
+      lastName: md(body.lastName, 80),
+      phoneNumber: md(body.phoneNumber, 40),
+      email: md(body.email, 200),
+
+      plate: md(body.plate, 50),
+      brand: md(body.brand, 80),
+      model: md(body.model, 80),
+      color: md(body.color, 50),
+      floorLevel: md(body.floorLevel, 50),
+      parkingSpot: md(body.parkingSpot, 50),
+      boxDeliveryAddress: md(body.boxDeliveryAddress, 300),
     });
 
-    if (!klickContactId)
-      throw new Error("klickContactId not returned from Make");
-
-    // 2️⃣ Get Stripe price
+    // 2) Stripe
     const priceId = await getActiveRecurringPriceId(stripe, productId);
 
-    // 3️⃣ Create Stripe session with required metadata
+    const metadata = {
+      klickContactId: md(klickContactId, 200),
+      plate: md(body.plate, 50),
+      subType: subType,
+    };
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url:
-        "https://night-wash.com/success?session_id={CHECKOUT_SESSION_ID}",
+      success_url: "https://night-wash.com/success?session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://night-wash.com/cancel",
-
-      metadata: {
-        klickContactId: md(klickContactId),
-        plate: md(body.plate, 50),
-        subType: subType,
-      },
-
-      subscription_data: {
-        metadata: {
-          klickContactId: md(klickContactId),
-          plate: md(body.plate, 50),
-          subType: subType,
-        },
-      },
+      metadata,
+      subscription_data: { metadata },
     });
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ url: session.url }),
-    };
+    return { statusCode: 200, body: JSON.stringify({ url: session.url }) };
   } catch (e) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: e.message }),
-    };
+    return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
 };
