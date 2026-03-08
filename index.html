@@ -47,7 +47,7 @@
         <input id="email" type="email" placeholder="pepito@gmail.com" autocomplete="email" />
       </div>
       <div>
-        <label>Phone number (with country code)</label>
+        <label>Phone number (include country code, e.g. +34605999999)</label>
         <input id="phoneNumber" type="tel" placeholder="+34605999999" autocomplete="tel" />
       </div>
     </div>
@@ -121,12 +121,20 @@
       return (document.getElementById(id).value || "").trim();
     }
 
+    function normalizePhone(phone) {
+      let cleaned = phone.trim().replace(/[^\d+]/g, "");
+      if (cleaned.includes("+")) {
+        cleaned = "+" + cleaned.replace(/\+/g, "");
+      }
+      return cleaned;
+    }
+
     function isValidEmail(email) {
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     }
 
     function isValidPhone(phone) {
-      const normalized = phone.replace(/[\s()-]/g, "");
+      const normalized = normalizePhone(phone);
       return /^\+[1-9]\d{7,14}$/.test(normalized);
     }
 
@@ -136,6 +144,10 @@
 
     document.getElementById("boxKey").addEventListener("input", (e) => {
       e.target.value = e.target.value.replace(/\D/g, "");
+    });
+
+    document.getElementById("phoneNumber").addEventListener("blur", (e) => {
+      e.target.value = normalizePhone(e.target.value);
     });
 
     document.getElementById("pay").addEventListener("click", async () => {
@@ -149,6 +161,8 @@
         return;
       }
 
+      const normalizedPhone = normalizePhone(val("phoneNumber"));
+
       const payload = {
         plan: document.getElementById("plan").value,
         user_id,
@@ -156,7 +170,7 @@
 
         firstName: val("firstName"),
         lastName: val("lastName"),
-        phoneNumber: val("phoneNumber"),
+        phoneNumber: normalizedPhone,
         email: val("email"),
 
         plate: val("plate"),
@@ -195,7 +209,7 @@
 
       if (!isValidPhone(payload.phoneNumber)) {
         msg.classList.add("error");
-        msg.textContent = "Please enter a valid phone number with country code, starting with +.";
+        msg.textContent = "Please enter a valid phone number with country code, for example +34605999999.";
         return;
       }
 
