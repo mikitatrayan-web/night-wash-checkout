@@ -42,6 +42,22 @@ function md(val, max = 500) {
   return s.length > max ? s.slice(0, max) : s;
 }
 
+function normalizePhone(phone) {
+  let cleaned = (phone || "").toString().trim().replace(/[^\d+]/g, "");
+  if (cleaned.includes("+")) {
+    cleaned = "+" + cleaned.replace(/\+/g, "");
+  }
+  return cleaned;
+}
+
+function isValidPhone(phone) {
+  return /^\+[1-9]\d{7,14}$/.test(phone);
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 async function callN8nWebhook(payload) {
   const url = process.env.N8N_WEBHOOK_URL;
   const auth = process.env.N8N_AUTH;
@@ -66,23 +82,24 @@ async function callN8nWebhook(payload) {
     );
   }
 
+  if (!text || !text.trim()) {
+    return "";
+  }
+
   let data = null;
   try {
-    data = text ? JSON.parse(text) : null;
+    data = JSON.parse(text);
   } catch (_) {
-    data = null;
+    return "";
   }
 
-  const klickContactId =
-    data?.klickContactId || data?.contactId || data?.contact_id || data?.id || null;
-
-  if (!klickContactId) {
-    throw new Error(
-      `n8n responded OK but no contactId found. Response: ${text}`.slice(0, 900)
-    );
-  }
-
-  return String(klickContactId);
+  return String(
+    data?.klickContactId ||
+    data?.contactId ||
+    data?.contact_id ||
+    data?.id ||
+    ""
+  );
 }
 
 exports.handler = async (event) => {
@@ -95,14 +112,41 @@ exports.handler = async (event) => {
     const subType = SUBTYPE_BY_PLAN[plan];
 
     if (!productId) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Unknown plan" }) };
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Unknown plan" }),
+      };
+    }
+
+    const normalizedPhone = normalizePhone(body.phoneNumber);
+    const email = md(body.email, 200);
+
+    if (!isValidEmail(email)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Invalid email address." }),
+      };
+    }
+
+    if (!isValidPhone(normalizedPhone)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Invalid phone number. Use country code with +, for example +34605999999." }),
+      };
+    }
+
+    if (!/^\d+$/.test(md(body.boxKey, 50))) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Box key must contain numbers only." }),
+      };
     }
 
     const klickContactId = await callN8nWebhook({
       firstName: md(body.firstName, 80),
       lastName: md(body.lastName, 80),
-      phoneNumber: md(body.phoneNumber, 40),
-      email: md(body.email, 200),
+      phoneNumber: normalizedPhone,
+      email: email,
 
       plate: md(body.plate, 50),
       brand: md(body.brand, 80),
@@ -117,10 +161,13 @@ exports.handler = async (event) => {
     const priceId = await getActiveRecurringPriceId(stripe, productId);
 
     const metadata = {
-      klickContactId: md(klickContactId, 200),
       plate: md(body.plate, 50),
       subType,
     };
+
+    if (klickContactId) {
+      metadata.klickContactId = md(klickContactId, 200);
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
