@@ -16,15 +16,11 @@
     .consent input { width:auto; margin-top: 3px; }
     a { color: inherit; }
     .error { color: #b00020; opacity: 1; }
-    .muted { opacity: .8; font-size: 13px; margin-top: 8px; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1 style="margin:0 0 6px;">Night Wash Payment</h1>
-    <div class="hint">
-      Please fill in the details below.
-    </div>
 
     <label>Plan</label>
     <select id="plan">
@@ -51,8 +47,8 @@
         <input id="email" type="email" placeholder="pepito@gmail.com" autocomplete="email" />
       </div>
       <div>
-        <label>Phone number</label>
-        <input id="phoneNumber" placeholder="+34605999999" autocomplete="tel" />
+        <label>Phone number (with country code)</label>
+        <input id="phoneNumber" type="tel" placeholder="+34605999999" autocomplete="tel" />
       </div>
     </div>
 
@@ -89,6 +85,14 @@
       </div>
     </div>
 
+    <div class="row">
+      <div>
+        <label>Box key</label>
+        <input id="boxKey" inputmode="numeric" pattern="[0-9]*" placeholder="e.g., 1234" autocomplete="off" />
+      </div>
+      <div></div>
+    </div>
+
     <label>Box delivery address</label>
     <input id="boxDeliveryAddress" placeholder="Street, building, city" autocomplete="street-address" />
 
@@ -102,24 +106,37 @@
 
     <button id="pay">Continue to payment</button>
     <div class="hint" id="msg"></div>
-
-    
   </div>
 
   <script>
     const params = new URLSearchParams(location.search);
 
-    // Preselect plan from URL: ?plan=elite
     const planFromUrl = (params.get("plan") || "").toLowerCase();
     if (planFromUrl) document.getElementById("plan").value = planFromUrl;
 
-    // Optional IDs from URL (if you pass from Tilda)
     const user_id = params.get("user_id") || "";
     const order_id = params.get("order_id") || "";
 
     function val(id) {
       return (document.getElementById(id).value || "").trim();
     }
+
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    function isValidPhone(phone) {
+      const normalized = phone.replace(/[\s()-]/g, "");
+      return /^\+[1-9]\d{7,14}$/.test(normalized);
+    }
+
+    function isNumbersOnly(value) {
+      return /^\d+$/.test(value);
+    }
+
+    document.getElementById("boxKey").addEventListener("input", (e) => {
+      e.target.value = e.target.value.replace(/\D/g, "");
+    });
 
     document.getElementById("pay").addEventListener("click", async () => {
       const msg = document.getElementById("msg");
@@ -148,16 +165,17 @@
         color: val("color"),
         floorLevel: val("floorLevel"),
         parkingSpot: val("parkingSpot"),
+        boxKey: val("boxKey"),
         boxDeliveryAddress: val("boxDeliveryAddress"),
       };
 
-      // Minimal required fields (adjust as you like)
       const required = [
         ["firstName", "First name"],
         ["lastName", "Last name"],
         ["phoneNumber", "Phone number"],
         ["email", "Email"],
         ["plate", "Plate number"],
+        ["boxKey", "Box key"],
         ["boxDeliveryAddress", "Box delivery address"],
       ];
 
@@ -166,6 +184,24 @@
       if (missing.length) {
         msg.classList.add("error");
         msg.textContent = "Please fill in: " + missing.join(", ") + ".";
+        return;
+      }
+
+      if (!isValidEmail(payload.email)) {
+        msg.classList.add("error");
+        msg.textContent = "Please enter a valid email address.";
+        return;
+      }
+
+      if (!isValidPhone(payload.phoneNumber)) {
+        msg.classList.add("error");
+        msg.textContent = "Please enter a valid phone number with country code, starting with +.";
+        return;
+      }
+
+      if (!isNumbersOnly(payload.boxKey)) {
+        msg.classList.add("error");
+        msg.textContent = "Box key must contain numbers only.";
         return;
       }
 
