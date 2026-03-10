@@ -131,14 +131,16 @@ exports.handler = async (event) => {
     if (!isValidPhone(normalizedPhone)) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Invalid phone number. Use country code with +, for example +34605999999." }),
+        body: JSON.stringify({
+          error: "Invalid phone number. Use country code with +, for example +34605999999.",
+        }),
       };
     }
 
-    if (!/^\d+$/.test(md(body.boxKey, 50))) {
+    if (!/^\d{4}$/.test(md(body.boxKey, 50))) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Box key must contain numbers only." }),
+        body: JSON.stringify({ error: "Box key must contain exactly 4 digits." }),
       };
     }
 
