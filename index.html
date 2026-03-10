@@ -16,6 +16,15 @@
     .consent input { width:auto; margin-top: 3px; }
     a { color: inherit; }
     .error { color: #b00020; opacity: 1; }
+    .info-box {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px solid #e7e7e7;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.35;
+      opacity: .85;
+    }
   </style>
 </head>
 <body>
@@ -88,7 +97,18 @@
     <div class="row">
       <div>
         <label>Box key</label>
-        <input id="boxKey" inputmode="numeric" pattern="[0-9]*" placeholder="e.g., 1234" autocomplete="off" />
+        <input
+          id="boxKey"
+          type="password"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="4"
+          placeholder="4-digit code"
+          autocomplete="off"
+        />
+        <div class="info-box">
+          Remember to save this number, this will be your access key to the box.
+        </div>
       </div>
       <div></div>
     </div>
@@ -138,12 +158,8 @@
       return /^\+[1-9]\d{7,14}$/.test(normalized);
     }
 
-    function isNumbersOnly(value) {
-      return /^\d+$/.test(value);
-    }
-
     document.getElementById("boxKey").addEventListener("input", (e) => {
-      e.target.value = e.target.value.replace(/\D/g, "");
+      e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4);
     });
 
     document.getElementById("phoneNumber").addEventListener("blur", (e) => {
@@ -213,9 +229,9 @@
         return;
       }
 
-      if (!isNumbersOnly(payload.boxKey)) {
+      if (!/^\d{4}$/.test(payload.boxKey)) {
         msg.classList.add("error");
-        msg.textContent = "Box key must contain numbers only.";
+        msg.textContent = "Box key must contain exactly 4 digits.";
         return;
       }
 
